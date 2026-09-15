@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aseprite Palette to CSS Variables — LaunchTower</title>
+<meta name="description" content="Paste an Aseprite palette (hex list, ASE/JSON export, or CSV) and get ready-to-use CSS custom properties, with contrast checks and copy-to-clipboard.">
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel2: #1d2130;
+    --border: #2a2f42;
+    --text: #e8eaf2;
+    --muted: #8b93ab;
+    --accent: #6c8cff;
+    --accent2: #46d4a0;
+    --danger: #ff6b6b;
+    --warn: #ffc857;
+    --mono: "SF Mono", "Fira Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 1.6rem; margin: 0 0 6px; }
+  h1 .brand { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 0.95rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .panel h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+  textarea {
+    width: 100%;
+    min-height: 220px;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    resize: vertical;
+  }
+  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  button {
+    background: var(--accent);
+    color: #0b0d14;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  button:hover { filter: brightness(1.1); }
+  .opts { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 0.85rem; color: var(--muted); }
+  .opts label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  input[type="text"] {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font-family: var(--mono); font-size: 0.85rem; width: 140px;
+  }
+  pre {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    overflow: auto;
+    max-height: 420px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    white-space: pre;
+    margin: 0;
+  }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .swatch {
+    width: 42px; height: 42px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.15);
+    position: relative; cursor: pointer;
+  }
+  .swatch:hover { transform: scale(1.08); }
+  .swatch .hex {
+    position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+    font-size: 0.6rem; color: var(--muted); white-space: nowrap;
+  }
+  .table-wrap { overflow: auto; max-height: 300px; border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  td .chip { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid rgba(255,255,255,0.2); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+  .badge.pass { background: rgba(70,212,160,0.15); color: var(--accent2); }
+  .badge.warn { background: rgba(255,200,87,0.15); color: var(--warn); }
+  .badge.fail { background: rgba(255,107,107,0.15); color: var(--danger); }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--accent2); color: #0b0d14; padding: 10px 20px; border-radius: 8px;
+    font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 99;
+  }
+  .toast.show { opacity: 1; }
+  .stat { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+  .stat b { color: var(--text); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
+  .tabs button.active { background: var(--panel2); color: var(--text); border-color: var(--accent); }
+  footer { margin-top: 32px; color: var(--muted); font-size: 0.8rem; text-align: center; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="brand">LaunchTower</span> · Aseprite Palette → CSS Variables</h1>
+    <div class="sub">Paste a palette from Aseprite (hex list, CSV, JSON, or ASE hex dump) and get clean CSS custom properties — with WCAG contrast checks and one-click copy.</div>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>1 · Input</h2>
+      <textarea id="input" placeholder="#ff0000
+#00ff00
+#0000ff
+#123456
+
+— or paste Aseprite exports:
+  CSV:  name,hex
+  JSON: {"palette":[{"hex":"#ff0000","name":"red"}, ...]}
+  ASE:  any text containing #rrggbb values"></textarea>
+      <div class="row">
+        <button id="loadSample">Load sample</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+        <button id="convertBtn">Convert →</button>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="optNames" checked> Use color names</label>
+        <label><input type="checkbox" id="optContrast" checked> Contrast table</label>
+        <label><input type="checkbox" id="optHex" checked> hex</label>
+        <label><input type="checkbox" id="optRgb" checked> rgb()</label>
+        <label><input type="checkbox" id="optHsl" checked> hsl()</label>
+        <label>Prefix <input type="text" id="prefix" value="c" spellcheck="false"></label>
+      </div>
+      <div class="stat" id="stat"></div>
+    </div>
+
+    <div class="panel">
+      <h2>2 · Output</h2>
+      <div class="tabs">
+        <button data-tab="css" class="active">CSS</button>
+        <button data-tab="tailwind">Tailwind</button>
+        <button data-tab="json">JSON</button>
+        <button data-tab="scss">SCSS</button>
+      </div>
+      <pre id="output">Paste a palette and hit Convert.</pre>
+      <div class="row">
+        <button id="copyBtn">Copy</button>
+        <button id="downloadBtn" class="secondary">Download .css</button>
+      </div>
+      <div class="swatch-row" id="swatches"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="contrastPanel" style="margin-top:16px; display:none;">
+    <h2>Contrast (WCAG 2.1) — each color vs white & black</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Color</th><th>vs #fff</th><th>vs #000</th><th>Best pairing</th></tr></thead>
+        <tbody id="contrastBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    LaunchTower · free tool · no data leaves your browser ·
+    <a href="https://pennypenguinapp-beep.github.io/" target="_blank" rel="noopener">more pixel-art tools</a>
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied!</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const input = $("input"), output = $("output"), stat = $("stat");
+  const swatches = $("swatches"), contrastBody = $("contrastBody");
+  const contrastPanel = $("contrastPanel"), toast = $("toast");
+
+  const SAMPLE = `#1a1c2c
+#5d275d
+#b13e53
+#ef7d57
+#ffcd75
+#a7f070
+#38b764
+#257179
+#29366f
+#3b5dc9
+#41a6f6
+#73eff7
+#f4f4f4
+#94b0c2
+#566c86
+#333c57`;
+
+  /* ---------- parsing ---------- */
+
+  function normalizeHex(h) {
+    h = h.trim().replace(/^#/, "").toLowerCase();
+    if (/^[0-9a-f]{3}$/.test(h)) h = h.split("").map(c => c + c).join("");
+    if (!/^[0-9a-f]{6}$/.test(h)) return null;
+    return "#" + h;
+  }
+
+  function parseInput(text) {
+    const colors = [];
+    const seen = new Set();
+
+    function push(hex, name) {
+      const n = normalizeHex(hex);
+      if (!n) return;
+      if (seen.has(n)) return;
+      seen.add(n);
+      colors.push({ hex: n, name: name || null });
+    }
+
+    // 1) JSON: Aseprite palette export {"palette":[{"hex":"#rrggbb","name":"..."}]}
+    const trimmed = text.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const data = JSON.parse(trimmed);
+        const arr = Array.isArray(data) ? data : (data.palette || []);
+        arr.forEach(p => {
+          if (p && p.hex) push(p.hex, p.name);
+        });
+        if (colors.length) return colors;
+      } catch (e) { /* fall through */ }
+    }
+
+    // 2) CSV: name,hex  or  hex,name
+    if (trimmed.includes(",")) {
+      const lines = trimmed.split(/\r?\n/);
+      for (const line of lines) {
+        const parts = line.split(",").map(s => s.trim());
+        if (parts.length >= 2) {
+          const a = normalizeHex(parts[0]), b = normalizeHex(parts[1]);
+          if (a && b) {
+            // name is the non-hex one
+            push(a, b === a ? null : null);
+            // detect which is hex
+            if (a && !b) push(a, parts[1]);
+            else if (b && !a) push(b, parts[0]);
+            else push(a, null);
+          } else if (a) push(a, parts[1]);
+          else if (b) push(b, parts[0]);
+        }
+      }
+      if (colors.length) return colors;
+    }
+
+    // 3) Generic: every #rrggbb / #rgb token, plus named Aseprite defaults
+    const re = /#([0-9a-fA-F]{3,8})\b/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const h = m[1];
+      if (h.length === 3 || h.length === 6) push(h);
+    }
+    return colors;
+  }
+
+  /* ---------- color math ---------- */
+
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16)
+    };
+  }
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return {
+      h: Math.round(h * 360),
+      s: Math.round(s * 100),
+      l: Math.round(l * 100)
+    };
+  }
+
+  function luminance(r, g, b) {
+    const f = (c) => {
+      c /= 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  }
+
+  function contrast(hexA, hexB) {
+    const a = hexToRgb(hexA), b = hexToRgb(hexB);
+    const l1 = luminance(a.r, a.g, a.b);
+    const l2 = luminance(b.r, b.g, b.b);
+    const hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  function slugify(name, i) {
+    let s = (name || "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!s) s = "c" + (i + 1);
+    return s;
+  }
+
+  /* ---------- output builders ---------- */
+
+  function buildCSS(colors, opts) {
+    const lines = [":root {"];
+    colors.forEach((c, i) => {
+      const name = opts.names ? slugify(c.name, i) : "c" + (i + 1);
+      const key = opts.prefix ? opts.prefix + "-" + name : name;
+      const rgb = hexToRgb(c.hex);
+      const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      lines.push("  --" + key + ": " + c.hex + ";");
+      if (opts.rgb) lines.push("  --" + key + "-rgb: " + rgb.r + ", " + rgb.g + ", " + rgb.b + ";");
+      if (opts.hsl) lines.push("  --" + key + "-hsl: " + hsl.h + " " + hsl.s + "% " + hsl.l + "%;");
+    });
+    lines.push("}");
+    return lines.join("\n");
+  }
+
+  function buildTailwind(colors, opts) {
+    const lines = ["// tailwind.config.js", "module.exports = {", "  theme: {", "    extend: {", "      colors: {"];
+    colors.forEach((c, i) => {
+      const name = opts.names ? slugify(c.name, i) : "color" + (i + 1);
+      const rgb = hexToRgb(c.hex);
+      lines.push("        '" + name + "': {");
+      lines.push("          DEFAULT: '" + c.hex + "',");
+      lines.push("          rgb: [" + rgb.r + ", " + rgb.g + ", " + rgb.b + "],");
+      lines.push("        },");
+    });
+    lines.push("      },");
+    lines.push("    },");
+    lines.push("  },");
+    lines.push("};");
+    return lines.join("\n");
+  }
+
+  function buildJSON(colors, opts) {
+    const obj = {};
+    colors.forEach((c, i) => {
+      const name = opts.names ? slugify(c.name, i) : "color-" + (i + 1);
+      const rgb = hexToRgb(c.hex);
+      const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      obj[name] = {
+        hex: c.hex,
+        rgb: [rgb.r, rgb.g, rgb.b],
+        hsl: [hsl.h, hsl.s, hsl.l]
+      };
+    });
+    return JSON.stringify(obj, null, 2);
+  }
+
+  function buildSCSS(colors, opts) {
+    const lines = [];
+    colors.forEach((c, i) => {
+      const name = opts.names ? slugify(c.name, i) : "color-" + (i + 1);
+      lines.push("$" + name + ": " + c.hex + ";");
+    });
+    return lines.join("\n");
+  }
+
+  /* ---------- UI ---------- */
+
+  let currentColors = [];
+  let currentTab = "css";
+
+  function getOpts() {
+    return {
+      names: $("optNames").checked,
+      contrast: $("optContrast").checked,
+      hex: $("optHex").checked,
+      rgb: $("optRgb").checked,
+      hsl: $("optHsl").checked,
+      prefix: $("prefix").value.trim()
+    };
+  }
+
+  function render() {
+    if (!currentColors.length) return;
+    const opts = getOpts();
+    let out = "";
+    if (currentTab === "css") out = buildCSS(currentColors, opts);
+    else if (currentTab === "tailwind") out = buildTailwind(currentColors, opts);
+    else if (currentTab === "json") out = buildJSON(currentColors, opts);
+    else out = buildSCSS(currentColors, opts);
+    output.textContent = out;
+
+    // swatches
+    swatches.innerHTML = "";
+    currentColors.forEach(c => {
+      const d = document.createElement("div");
+      d.className = "swatch";
+      d.style.background = c.hex;
+      d.title = c.hex + (c.name ? " (" + c.name + ")" : "");
+      const s = document.createElement("span");
+      s.className = "hex";
+      s.textContent = c.hex;
+      d.appendChild(s);
+      d.addEventListener("click", () => copyText(c.hex));
+      swatches.appendChild(d);
+    });
+
+    // contrast
+    if (opts.contrast) {
+      contrastPanel.style.display = "block";
+      contrastBody.innerHTML = "";
+      currentColors.forEach(c => {
+        const cw = contrast(c.hex, "#ffffff");
+        const cb = contrast(c.hex, "#000000");
+        const best = cw >= cb ? "#ffffff" : "#000000";
+        const bestRatio = Math.max(cw, cb);
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td><span class='chip' style='background:" + c.hex + "'></span>" + c.hex + (c.name ? " <span style='color:var(--muted)'>" + escapeHtml(c.name) + "</span>" : "") + "</td>" +
+          "<td>" + badge(cw) + "</td>" +
+          "<td>" + badge(cb) + "</td>" +
+          "<td>" + best + " (" + bestRatio.toFixed(2) + ":1)</td>";
+        contrastBody.appendChild(tr);
+      });
+    } else {
+      contrastPanel.style.display = "none";
+    }
+
+    stat.innerHTML = "<b>" + currentColors.length + "</b> colors parsed · " +
+      currentColors.filter(c => c.name).length + " named";
+  }
+
+  function badge(ratio) {
+    const r = ratio.toFixed(2);
+    if (ratio >= 7) return '<span class="badge pass">' + r + ':1 AAA</span>';
+    if (ratio >= 4.5) return '<span class="badge pass">' + r + ':1 AA</span>';
+    if (ratio >= 3) return '<span class="badge warn">' + r + ':1 AA-Large</span>';
+    return '<span class="badge fail">' + r + ':1 fail</span>';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+  }
+
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(showToast, () => fallbackCopy(t));
+    } else fallbackCopy(t);
+  }
+
+  function fallbackCopy(t) {
+    const ta = document.createElement("textarea");
+    ta.value = t;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); showToast(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function showToast(msg) {
+    toast.textContent = msg || "Copied!";
+    toast.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove("show"), 1400);
+  }
+
+  /* ---------- events ---------- */
+
+  $("convertBtn").addEventListener("click", () => {
+    currentColors = parseInput(input.value);
+    if (!currentColors.length) {
+      output.textContent = "No colors found. Paste hex values like #ff0000, or an Aseprite CSV/JSON export.";
+      stat.textContent = "";
+      swatches.innerHTML = "";
+      contrastPanel.style.display = "none";
+      return;
+    }
+    render();
+  });
+
+  $("loadSample").addEventListener("click", () => {
+    input.value = SAMPLE;
+    currentColors = parseInput(SAMPLE);
+    render();
+  });
+
+  $("clearBtn").addEventListener("click", () => {
+    input.value = "";
+    currentColors = [];
+    output.textContent = "Paste a palette and hit Convert.";
+    stat.textContent = "";
+    swatches.innerHTML = "";
+    contrastPanel.style.display = "none";
+  });
+
+  $("copyBtn").addEventListener("click", () => copyText(output.textContent));
+
+  $("downloadBtn").addEventListener("click", () => {
+    const blob = new Blob([buildCSS(currentColors, getOpts())], { type: "text/css" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "palette.css";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.querySelectorAll(".tabs button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentTab = btn.dataset.tab;
+      render();
+    });
+  });
+
+  ["optNames", "optContrast", "optHex", "optRgb", "optHsl"].forEach(id =>
+    $(id).addEventListener("change", render)
+  );
+  $("prefix").addEventListener("input", render);
+
+  // live convert as you type (debounced)
+  let t;
+  input.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      currentColors = parseInput(input.value);
+      if (currentColors.length) render();
+    }, 250);
+  });
+})();
+</script>
+</body>
+</html>
